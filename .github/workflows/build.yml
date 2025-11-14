@@ -3,7 +3,7 @@ name: 打包 Python 脚本为可执行文件
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
@@ -21,8 +21,16 @@ jobs:
       with:
         python-version: '3.10'
 
-    - name: 安装依赖（Linux / macOS）
-      if: runner.os != 'Windows'
+    - name: 缓存 pip 依赖（可选）
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: 安装依赖（跨平台）
+      shell: bash
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
@@ -30,28 +38,20 @@ jobs:
           pip install -r requirements.txt
         fi
 
-    - name: 安装依赖（Windows）
-      if: runner.os == 'Windows'
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller
-        if exist requirements.txt (
-          pip install -r requirements.txt
-        )
+    - name: 使用 PyInstaller 打包
+      shell: bash
+      run: pyinstaller --onefile --console --name=xicha-draw main.py
 
-    - name: 使用 PyInstaller 打包程序
-      run: pyinstaller --onefile --console main.py
-
-    - name: 上传 Linux 或 macOS 可执行文件
+    - name: 上传可执行文件（非 Windows）
       if: runner.os != 'Windows'
       uses: actions/upload-artifact@v4
       with:
-        name: 喜茶绘图-${{ runner.os }}
-        path: dist/main
+        name: xicha-draw-${{ runner.os }}
+        path: dist/xicha-draw
 
-    - name: 上传 Windows 可执行文件 (.exe)
+    - name: 上传可执行文件（Windows）
       if: runner.os == 'Windows'
       uses: actions/upload-artifact@v4
       with:
-        name: 喜茶绘图-${{ runner.os }}
-        path: dist/main.exe
+        name: xicha-draw-${{ runner.os }}
+        path: dist/xicha-draw.exe
