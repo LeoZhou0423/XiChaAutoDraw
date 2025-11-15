@@ -16,9 +16,9 @@ jobs:
     - name: 检出代码（带写权限）
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}  # ← 关键：提供 token 以支持后续 push/tag
-        fetch-depth: 0                      # 拉取完整历史，便于打 tag
-        fetch-tags: true                    # 获取所有 tags
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+        fetch-tags: true
 
     - name: 设置 Python 3.10
       uses: actions/setup-python@v5
@@ -26,6 +26,7 @@ jobs:
         python-version: '3.10'
 
     - name: 安装依赖
+      shell: cmd  # ← 关键！使用 CMD 而非 PowerShell
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
@@ -34,13 +35,16 @@ jobs:
         )
 
     - name: 打包程序
+      shell: cmd  # ← 同样使用 CMD
       run: |
         pyinstaller --onefile --windowed --name "喜贴绘图工具" main.py
-        mkdir -p releases/${{ github.event.inputs.version }}
-        move dist\"喜贴绘图工具.exe" releases/${{ github.event.inputs.version }}\
-        7z a releases/${{ github.event.inputs.version }}\"喜贴绘图-Windows.zip" releases/${{ github.event.inputs.version }}\"喜贴绘图工具.exe"
+        if not exist releases mkdir releases
+        if not exist releases\${{ github.event.inputs.version }} mkdir releases\${{ github.event.inputs.version }}
+        move dist\"喜贴绘图工具.exe" releases\${{ github.event.inputs.version }}\
+        7z a releases\${{ github.event.inputs.version }}\"喜贴绘图-Windows.zip" releases\${{ github.event.inputs.version }}\"喜贴绘图工具.exe"
 
     - name: 提交构建产物到仓库
+      shell: bash  # ← Git 命令在 bash 下更稳定（GitHub Actions 的 windows 也支持 bash）
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -49,6 +53,7 @@ jobs:
         git push origin HEAD:main
 
     - name: 创建 Git Tag
+      shell: bash
       run: |
         git tag ${{ github.event.inputs.version }}
         git push origin ${{ github.event.inputs.version }}
