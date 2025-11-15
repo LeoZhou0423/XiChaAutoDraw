@@ -18,7 +18,7 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
-        fetch-tags: true
+        ref: main  # 从 main 检出源码
 
     - name: 设置 Python 3.10
       uses: actions/setup-python@v5
@@ -26,7 +26,7 @@ jobs:
         python-version: '3.10'
 
     - name: 安装依赖
-      shell: cmd  # ← 关键！使用 CMD 而非 PowerShell
+      shell: cmd
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
@@ -35,26 +35,38 @@ jobs:
         )
 
     - name: 打包程序
-      shell: cmd  # ← 同样使用 CMD
+      shell: cmd
       run: |
         pyinstaller --onefile --windowed --name "喜贴绘图工具" main.py
         if not exist releases mkdir releases
-        if not exist releases\${{ github.event.inputs.version }} mkdir releases\${{ github.event.inputs.version }}
-        move dist\"喜贴绘图工具.exe" releases\${{ github.event.inputs.version }}\
-        7z a releases\${{ github.event.inputs.version }}\"喜贴绘图-Windows.zip" releases\${{ github.event.inputs.version }}\"喜贴绘图工具.exe"
+        if not exist "releases\${{ github.event.inputs.version }}" mkdir "releases\${{ github.event.inputs.version }}"
+        move "dist\喜贴绘图工具.exe" "releases\${{ github.event.inputs.version }}\"
+        7z a "releases\${{ github.event.inputs.version }}\喜贴绘图-Windows.zip" "releases\${{ github.event.inputs.version }}\喜贴绘图工具.exe"
 
-    - name: 提交构建产物到仓库
-      shell: bash  # ← Git 命令在 bash 下更稳定（GitHub Actions 的 windows 也支持 bash）
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add releases/
-        git commit -m "chore: add build for ${{ github.event.inputs.version }}"
-        git push origin HEAD:main
-
-    - name: 创建 Git Tag
+    - name: 推送构建产物到 releases 分支
       shell: bash
       run: |
+        # 配置 Git
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # 切换到 releases 分支（不存在则创建）
+        git checkout -B releases origin/releases 2>/dev/null || git checkout --orphan releases
+        
+        # 清空当前分支内容（只保留 releases 目录）
+        git rm -rf .
+        mkdir -p releases
+        cp -r "releases/${{ github.event.inputs.version }}" releases/
+        
+        # 提交并推送
+        git add releases/
+        git commit -m "chore: publish ${{ github.event.inputs.version }}"
+        git push --force origin releases
+
+    - name: 创建 Git Tag（指向 releases 分支的最新提交）
+      shell: bash
+      run: |
+        git checkout releases
         git tag ${{ github.event.inputs.version }}
         git push origin ${{ github.event.inputs.version }}
 
@@ -64,6 +76,6 @@ jobs:
         tag_name: ${{ github.event.inputs.version }}
         name: 喜贴自动绘制工具 ${{ github.event.inputs.version }}
         body: Windows 版本自动构建
-        files: releases/${{ github.event.inputs.version }}/喜贴绘图-Windows.zip
+        files: "releases/${{ github.event.inputs.version }}/喜贴绘图-Windows.zip"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
