@@ -13,12 +13,11 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: 检出代码（带写权限）
+    - name: 检出源码（main 分支）
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
-        ref: main  # 从 main 检出源码
 
     - name: 设置 Python 3.10
       uses: actions/setup-python@v5
@@ -34,48 +33,56 @@ jobs:
           pip install -r requirements.txt
         )
 
-    - name: 打包程序
+    - name: 打包程序到临时目录
       shell: cmd
       run: |
         pyinstaller --onefile --windowed --name "喜贴绘图工具" main.py
-        if not exist releases mkdir releases
-        if not exist "releases\${{ github.event.inputs.version }}" mkdir "releases\${{ github.event.inputs.version }}"
-        move "dist\喜贴绘图工具.exe" "releases\${{ github.event.inputs.version }}\"
-        7z a "releases\${{ github.event.inputs.version }}\喜贴绘图-Windows.zip" "releases\${{ github.event.inputs.version }}\喜贴绘图工具.exe"
+        mkdir _artifacts
+        move "dist\喜贴绘图工具.exe" "_artifacts\"
+        7z a "_artifacts\喜贴绘图-Windows.zip" "_artifacts\喜贴绘图工具.exe"
 
-    - name: 推送构建产物到 releases 分支
+    - name: 准备发布分支并推送构建产物
       shell: bash
+      env:
+        VERSION: ${{ github.event.inputs.version }}
       run: |
         # 配置 Git
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # 切换到 releases 分支（不存在则创建）
-        git checkout -B releases origin/releases 2>/dev/null || git checkout --orphan releases
+        # 获取 releases 分支（如果不存在则创建空分支）
+        git fetch origin releases:releases 2>/dev/null || git checkout --orphan releases
         
-        # 清空当前分支内容（只保留 releases 目录）
-        git rm -rf .
-        mkdir -p releases
-        cp -r "releases/${{ github.event.inputs.version }}" releases/
+        # 切换到 releases 分支
+        git checkout releases
         
-        # 提交并推送
-        git add releases/
-        git commit -m "chore: publish ${{ github.event.inputs.version }}"
-        git push --force origin releases
+        # 清理当前内容（只保留 .git）
+        rm -rf .[^.]*
+        rm -rf ..?*
+        
+        # 创建 releases/$VERSION 目录并复制 ZIP 和 EXE
+        mkdir -p "releases/$VERSION"
+        cp "../_artifacts/喜贴绘图-Windows.zip" "releases/$VERSION/"
+        cp "../_artifacts/喜贴绘图工具.exe" "releases/$VERSION/"
+        
+        # 提交
+        git add .
+        git commit -m "chore: publish $VERSION"
+        git push origin releases
 
-    - name: 创建 Git Tag（指向 releases 分支的最新提交）
+    - name: 在 releases 分支上创建 tag
       shell: bash
       run: |
         git checkout releases
         git tag ${{ github.event.inputs.version }}
         git push origin ${{ github.event.inputs.version }}
 
-    - name: 创建 GitHub Release 并上传 ZIP
+    - name: 创建 GitHub Release 并上传附件
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.event.inputs.version }}
         name: 喜贴自动绘制工具 ${{ github.event.inputs.version }}
         body: Windows 版本自动构建
-        files: "releases/${{ github.event.inputs.version }}/喜贴绘图-Windows.zip"
+        files: _artifacts/喜贴绘图-Windows.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
