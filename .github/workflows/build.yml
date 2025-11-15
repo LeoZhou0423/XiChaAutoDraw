@@ -1,23 +1,24 @@
-name: 自动打包并发布 Release（含 jsDelivr 加速支持）
+name: 自动打包并发布（Windows）
 
 on:
-  # 手动触发（推荐）
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号（如 v1.0）'
+        description: '版本号（例如：v1.0）'
         required: true
         default: 'v1.0'
 
 jobs:
-  build-and-release:
+  build-windows:
     runs-on: windows-latest
 
     steps:
-    - name: 检出代码
+    - name: 检出代码（带写权限）
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GH_TOKEN }}  # 需要写权限
+        token: ${{ secrets.GITHUB_TOKEN }}  # ← 关键：提供 token 以支持后续 push/tag
+        fetch-depth: 0                      # 拉取完整历史，便于打 tag
+        fetch-tags: true                    # 获取所有 tags
 
     - name: 设置 Python 3.10
       uses: actions/setup-python@v5
@@ -32,33 +33,32 @@ jobs:
           pip install -r requirements.txt
         )
 
-    - name: 打包程序（Windows）
+    - name: 打包程序
       run: |
         pyinstaller --onefile --windowed --name "喜贴绘图工具" main.py
-        mkdir releases\${{ github.event.inputs.version }}
-        move dist\"喜贴绘图工具.exe" releases\${{ github.event.inputs.version }}\
-        7z a releases\${{ github.event.inputs.version }}\"喜贴绘图-Windows.zip" releases\${{ github.event.inputs.version }}\"喜贴绘图工具.exe"
+        mkdir -p releases/${{ github.event.inputs.version }}
+        move dist\"喜贴绘图工具.exe" releases/${{ github.event.inputs.version }}\
+        7z a releases/${{ github.event.inputs.version }}\"喜贴绘图-Windows.zip" releases/${{ github.event.inputs.version }}\"喜贴绘图工具.exe"
 
-    - name: 提交构建产物到 Git
+    - name: 提交构建产物到仓库
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add releases/
-        git commit -m "chore: add build artifacts for ${{ github.event.inputs.version }}"
-        git push origin main
+        git commit -m "chore: add build for ${{ github.event.inputs.version }}"
+        git push origin HEAD:main
 
     - name: 创建 Git Tag
       run: |
         git tag ${{ github.event.inputs.version }}
         git push origin ${{ github.event.inputs.version }}
 
-    - name: 创建 GitHub Release 并上传附件
+    - name: 创建 GitHub Release 并上传 ZIP
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.event.inputs.version }}
-        name: Release ${{ github.event.inputs.version }}
-        body: "自动构建版本 ${{ github.event.inputs.version }}"
-        files: |
-          releases/${{ github.event.inputs.version }}/喜贴绘图-Windows.zip
+        name: 喜贴自动绘制工具 ${{ github.event.inputs.version }}
+        body: Windows 版本自动构建
+        files: releases/${{ github.event.inputs.version }}/喜贴绘图-Windows.zip
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
